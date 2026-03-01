@@ -6,8 +6,7 @@ class Book(BaseModel):
     title: str
     author: str
     year: int
-
     rating: Optional[float] = Field(None, ge=0, le=5)
     comment: Optional[str] = None
-    status: str = Field(default="available")  # available | borrowed
+    status: str = Field(default="available")
     stock: int = Field(default=1, ge=0)

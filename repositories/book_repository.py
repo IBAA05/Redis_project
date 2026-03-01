@@ -10,8 +10,10 @@ class BookRepository:
 
     @staticmethod
     def get_all() -> List[dict]:
-        return redis_client.lrange(BOOK_KEY, 0, -1)
-
+     books = redis_client.lrange(BOOK_KEY, 0, -1)
+     return [json.loads(b) for b in books]
+    
+    
     @staticmethod
     def save(book: Book):
         redis_client.rpush(BOOK_KEY, book.model_dump_json())
