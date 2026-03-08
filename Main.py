@@ -4,6 +4,7 @@ from routes.favorite_routes import router as favorite_router
 from routes.reading_list_routes import router as reading_list_router
 from routes.borrow_routes import router as borrow_router
 from routes.log_routes import router as log_router
+from routes.aof_routes import router as aof_router
 
 app = FastAPI(title="Book Management System")
 
@@ -12,6 +13,7 @@ app.include_router(favorite_router)
 app.include_router(reading_list_router)
 app.include_router(borrow_router)
 app.include_router(log_router)
+app.include_router(aof_router)
 
 if __name__ == "__main__":
     import uvicorn

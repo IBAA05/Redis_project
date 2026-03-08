@@ -38,7 +38,7 @@ def delete_book(book_id: str):
     if not existing:
         raise HTTPException(status_code=404, detail="Book not found")
     BookRepository.delete(book_id)
-    LogService.log("BOOK_DELETED", f"Book '{book_id}' was deleted", book_id)
+    LogService.log("BOOK_DELETED", f"Book '{book_id}' was deleted", book_id)                  
     return {"message": "Book deleted successfully"}
 
 @router.get("/books/", tags=["Listing"])
