@@ -7,6 +7,8 @@ from routes.favorite_routes import router as favorite_router
 from routes.rating_routes import router as rating_router
 from routes.review_routes import router as review_router
 from routes.reading_status_routes import router as reading_status_router
+from routes.stream_routes import router as stream_router
+from routes.overdue_routes import router as overdue_router
 app = FastAPI(title="Book Management System")
 
 app.include_router(auth_router)
@@ -17,4 +19,6 @@ app.include_router(review_router)
 app.include_router(reading_status_router)
 app.include_router(favorite_router)
 app.include_router(rating_router)
+app.include_router(stream_router)
+app.include_router(overdue_router)
 
