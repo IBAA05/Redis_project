@@ -1,0 +1,101 @@
+# Add Redis Streams to Book Management System
+
+This plan adds 2 Redis Streams features to the existing FastAPI project using **only new files**.  
+The only change to an existing file is adding 2 router imports in [main.py](file:///c:/Users/HP/Redis_project/main.py).
+
+---
+
+## Proposed Changes
+
+### Feature 1 — Activity Event Stream (`audit_stream`)
+
+Every meaningful action in the system (borrow, return, review, rate…) is published to a Redis Stream `audit_stream` via `XADD`. The stream can then be queried or consumed by any interested service.
+
+#### [NEW] [stream_repository.py](file:///c:/Users/HP/Redis_project/repositories/stream_repository.py)
+Low-level Redis Streams wrappers:
+- `publish(stream, fields)` → `XADD stream * field value …`
+- `read_range(stream, start, end, count)` → `XRANGE`
+- `read_latest(stream, count)` → `XREVRANGE`
+- `create_consumer_group(stream, group, start_id)` → `XGROUP CREATE`
+- `read_group(stream, group, consumer, count)` → `XREADGROUP`
+- `ack(stream, group, *ids)` → `XACK`
+
+#### [NEW] [stream_service.py](file:///c:/Users/HP/Redis_project/services/stream_service.py)
+High-level helpers that call `StreamRepository`:
+- `publish_event(action, description, book_id, user_id)` — XADD with timestamp
+- `get_all_events(count)` — XREVRANGE last N events
+- `get_events_by_book(book_id, count)` — filter from XRANGE result
+
+#### [NEW] [stream_routes.py](file:///c:/Users/HP/Redis_project/routes/stream_routes.py)
+REST endpoints (prefix `/stream`, admin-only):
+- `GET /stream/events?count=50` — last N events from the stream
+- `GET /stream/events/{book_id}?count=50` — events filtered by book
+
+---
+
+### Feature 2 — Overdue Borrow Detection Stream (`overdue_stream`)
+
+A **producer** scans all active borrows and publishes overdue ones to `overdue_stream` via `XADD`.  
+A **consumer group** (`overdue_processors`) reads and processes those events, marking each borrow hash with `status = overdue` in Redis.
+
+#### [NEW] [overdue_producer.py](file:///c:/Users/HP/Redis_project/services/overdue_producer.py)
+- `scan_and_publish()` — reads all borrow hashes from [BorrowRepository](file:///c:/Users/HP/Redis_project/repositories/borrow_repository.py#7-47), compares `due_date` to today, `XADD`s an event for each overdue book with fields: `book_id`, `user_id`, `due_date`, `days_overdue`
+
+#### [NEW] [overdue_consumer.py](file:///c:/Users/HP/Redis_project/services/overdue_consumer.py)
+- `process_overdue_events()` — creates consumer group lazily, `XREADGROUP` reads pending events, sets `hset borrow:{book_id} status overdue`, then `XACK`s processed messages
+
+#### [NEW] [overdue_routes.py](file:///c:/Users/HP/Redis_project/routes/overdue_routes.py)
+REST endpoints (prefix `/overdue`):
+- `POST /overdue/scan` *(admin-only)* — triggers `scan_and_publish()` + `process_overdue_events()`
+- `GET /overdue/list` *(admin-only)* — lists all borrows with `status = overdue`
+
+---
+
+### Integration
+
+#### [MODIFY] [main.py](file:///c:/Users/HP/Redis_project/main.py)
+Add only two new import + `include_router` lines at the end — no other changes.
+
+```python
+from routes.stream_routes import router as stream_router
+from routes.overdue_routes import router as overdue_router
+
+app.include_router(stream_router)
+app.include_router(overdue_router)
+```
+
+---
+
+## Verification Plan
+
+> **No existing test suite was found in the project.** Verification is done manually via the Swagger UI.
+
+### Manual Verification Steps
+
+1. **Start the server**
+   ```
+   cd c:\Users\HP\Redis_project
+   uvicorn main:app --reload
+   ```
+
+2. **Open Swagger UI** → `http://127.0.0.1:8000/docs`
+
+3. **Feature 1 — Activity Stream**
+   - Borrow or return a book using `POST /borrows/borrow` or `POST /borrows/return/{book_id}`
+   - Call `GET /stream/events` → response should contain the events just published
+   - Call `GET /stream/events/{book_id}` → only events for that book returned
+
+4. **Feature 2 — Overdue Stream**
+   - Borrow a book with a `due_date` in the past (e.g. `"2024-01-01"`)
+   - Call `POST /overdue/scan` → should return count of overdue events published + processed
+   - Call `GET /overdue/list` → should list the overdue borrow
+   - Verify in Redis directly:
+     ```
+     redis-cli HGETALL borrow:{book_id}
+     ```
+     The `status` field should be `overdue`.
+   - Verify stream keys exist:
+     ```
+     redis-cli XLEN audit_stream
+     redis-cli XLEN overdue_stream
+     ```
